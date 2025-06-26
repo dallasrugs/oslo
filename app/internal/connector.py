@@ -1,0 +1,74 @@
+# file: console-api/app/internal/db.py
+
+import sqlalchemy as db 
+from datetime import datetime 
+from sqlalchemy.dialects import postgresql
+from fastapi import HTTPException
+from dotenv import load_dotenv
+from sqlalchemy.orm import sessionmaker
+import os 
+import requests 
+import json 
+# Load environment variables from .env file
+env_path = '../app/.env'
+load_dotenv(env_path)
+
+# Instantiate the database connection class
+'''
+This class is used to connect to the GSBAN Sourcing database.
+Usage:
+from console_api.app.internal.db import SourcingDB - to import the class 
+'''
+
+def getDBConnection():
+    try:
+        connection_string = os.getenv("DATABASE_URL")
+
+        engine = db.create_engine(connection_string, echo=True)
+        
+        Session = sessionmaker(bind=engine)
+
+        session = Session()    
+
+        connection = engine.connect()
+        metadata = db.MetaData(schema='sourcingDB')
+        metadata.reflect(bind=engine)
+        print("Metadata Check: ",metadata.tables.keys())
+
+        return [engine,metadata,session]
+    
+    except Exception as e:
+        print(f"Error connecting to the database: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+        
+
+def getOdooConnection():
+    try:
+        AUTH_URL = os.getenv("ODOO_URL") + 'web/session/authenticate'
+        headers = {'Content-Type': 'application/json'}
+        # Authentication credentials
+        data = {
+            'params': {
+                'login': os.getenv("ODOO_API_USER"),
+                'password': os.getenv("ODOO_API_PWD"),
+                'db': os.getenv("ODOO_DB")
+            }
+        }
+
+        # Authenticate user
+        res = requests.post(
+            AUTH_URL, 
+            data=json.dumps(data), 
+            headers=headers
+        )
+
+        # Get response cookies
+        # This hold information for authenticated user
+        cookies = res.cookies
+
+        return [os.getenv('ODOO_URL'),cookies] 
+    
+    except Exception as e:
+        print(f"Error connecting to Odoo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Odoo connection error: {str(e)}")
+

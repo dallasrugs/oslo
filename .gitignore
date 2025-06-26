@@ -1,0 +1,7 @@
+api-env/
+app/.env 
+__pycache__/
+internal/__pycache__/
+models/__pycache__/
+routers/__pycache__/
+
