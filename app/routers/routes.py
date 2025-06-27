@@ -3,6 +3,8 @@ from routers.products import Product
 from routers.odoo import Odoo 
 from internal import status
 from models.inquiry import Inquiry
+from internal.logger import logger
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -38,7 +40,7 @@ async def get_product_by_id(item_id: int, product: Product = Depends(get_product
 
 def get_odoo_instance() -> Odoo:
     if status.odoo_instance is None:
-        raise Exception("Odoo Instance is probably not running")
+        logger.error("Odoo Instance is probably not running")
     return status.odoo_instance
 
 ## ODOO Routes 
@@ -47,10 +49,30 @@ def get_odoo_instance() -> Odoo:
 async def getOdooUsers(odoo: Odoo = Depends(get_odoo_instance)):
     return odoo.getUsers()
 
-# Jai Mata Di! Lets Rock!
+# Jai Mata Di! Let's Rock!
+from fastapi.responses import JSONResponse
+from fastapi import HTTPException
+
 @router.post("/odoo/inquiry")
 async def create_inquiry(inquiry: Inquiry, odoo: Odoo = Depends(get_odoo_instance)):
-    return odoo.addInquiry(inquiry.dict())
+    if odoo is None:
+        return JSONResponse(
+            status_code=500,
+            content={"message": "Inquiry could not be processed. Odoo connection is unavailable."}
+        )
+
+    try:
+        response = odoo.addInquiry(inquiry.dict())
+        return response
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "message": "Failed to send request to Odoo. The service may be down or unreachable.",
+                "exception": str(e)
+            }
+        )
 
 
 
