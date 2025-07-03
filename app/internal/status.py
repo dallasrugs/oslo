@@ -1,63 +1,66 @@
 # file: console-api/app/internal/status.py
-from internal.connector import getDBConnection, getOdooConnection
+from internal.connector import getSupabaseConnection, getOdooConnection
 from fastapi import HTTPException
 from internal.logger import logger
 from fastapi.responses import JSONResponse
+from internal.connector import getSupabaseBucket
 
-# Shared objects
+# Database shared objects
 db_engine = None
 db_metadata = None
 db_session = None
 
 # instance loaders 
-product_instance = None
+supabase_instance = None
 odoo_instance = None 
 
-def checkDBConnection():
+def checkSupabaseConnection():
     # declaring global variables to store the database connection details
     global engine, metadata, session
     global db_engine, db_metadata, db_session
     try:
         logger.info("Connecting to Supabase Database...")
-        engine,metadata,session = getDBConnection()
+        engine,metadata,session = getSupabaseConnection()
         db_engine = engine 
         db_metadata = metadata 
         db_session = session
-        logger.info("Supabase Database connection established successfully.")
 
     except Exception as e:
         logger.error(f"Error connecting to Supabase Database: {str(e)}")
-        return JSONResponse(status_code=500,content={"error":{
-            "message": "Issue with connecting to Supabase Database",
-            "Exception Message" : e
-        }})
+        raise HTTPException(
+            status_code=500,
+            detail= f"Could not connect to Odoo. Please check your configuration and try again. Please find the attached exception. \n {str(e)}"
+        )
 
 def checkOdooConnection():
     logger.info("Connecting to Odoo Instance")
     try:
         getOdooConnection()
     except Exception as e:
+        logger.error(f"Issue with connecting to Odoo Instance: \n{str(e)}")
         return JSONResponse(status_code=500,content={"error":{
             "message": "Issue with connecting to Odoo",
             "Exception Message" : e
         }})
 
 def getLoaders():
-    global product_instance
+    global supabase_instance
     global odoo_instance
+    global supabase_bucket_instance
 
-    # Loading Product Instance 
+    # Loading Supabase Instance 
     try:
-        if product_instance is None:
-            logger.info("Loading Product instance...")
-            from routers.products import Product  # Delayed import to avoid circular dependency
-            product_instance = Product()
+        if supabase_instance is None:
+            logger.info("Loading Supabase instance...")
+            from routers.supabase import Supabase  # Delayed import to avoid circular dependency
+            supabase_instance = Supabase()
+
     except Exception as e:
-        logger.error(f"Error loading Product instance: {str(e)}")
-        return JSONResponse(status_code=500,content = {"error":{
-            "message": "Failed to create Supabase Connection Instance",
-            "Exception Message" : e
-        }})
+        logger.error(f"Error loading Supabase instance: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load Supabase instance."
+        )
     
     # Loading Odoo Instance 
     try:
@@ -67,10 +70,11 @@ def getLoaders():
             odoo_instance = Odoo()
     except Exception as e:
         logger.error(f"Error Loading Odoo Connection")
-        return JSONResponse(status_code=500,content={"error":{
-            "message": "Issue creating Odoo Instance",
-            "Exception Message" : e
-        }})
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to load Odoo instance."
+        )
+    
     
     
 def startup():
@@ -79,13 +83,11 @@ def startup():
     It checks the database connection and loads necessary instances.
     """
     try:
-        checkDBConnection() # for connecting to Supabase
+        checkSupabaseConnection() # for connecting to Supabase
         checkOdooConnection() # for connecting to Odoo Service 
-        getLoaders()
+        getLoaders() # loads instance objects 
         logger.info("Application startup complete.")
     
     except Exception as e:
-        logger.error("Odoo and Supabase is not working")
-        return JSONResponse(status_code=500, content={
-            "message": "One or more services failed to start, continuing FASTAPI instance."
-        })
+        print("Exception occured",e)
+        logger.error("Either Odoo or Supabase is not working")

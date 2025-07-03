@@ -1,7 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import uvicorn
 from contextlib import asynccontextmanager
 from routers.routes import router
 from internal import status
@@ -10,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 
 origins = [
-    "http://localhost:3000"]
+    "http://localhost:5173"]
 
 
 
@@ -18,10 +16,10 @@ origins = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Call DB check via status (and in future: other services too)
-    logger.info("Starting up GSBAN Console API v0.1")
+    logger.info("Starting up Oslo v0.1")
     status.startup()
     yield
-    logger.info("Shutting down API...")
+    logger.info("Shutting down Oslo...")
 
 
 
@@ -33,6 +31,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Range"]
 )
 
 @app.exception_handler(Exception)

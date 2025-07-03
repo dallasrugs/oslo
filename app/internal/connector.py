@@ -6,6 +6,9 @@ from sqlalchemy.dialects import postgresql
 from fastapi import HTTPException
 from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
+from internal.logger import logger 
+from supabase import create_client, Client
+
 import os 
 import requests 
 import json 
@@ -20,8 +23,9 @@ Usage:
 from console_api.app.internal.db import SourcingDB - to import the class 
 '''
 
-def getDBConnection():
+def getSupabaseConnection():
     try:
+        logger.info("Attempting Supabase Connection..")
         connection_string = os.getenv("DATABASE_URL")
 
         engine = db.create_engine(connection_string, echo=True)
@@ -31,16 +35,23 @@ def getDBConnection():
         session = Session()    
 
         connection = engine.connect()
-        metadata = db.MetaData(schema='sourcingDB')
+        metadata = db.MetaData(schema=os.getenv("DATABASE_SCHEMA"))
         metadata.reflect(bind=engine)
-        print("Metadata Check: ",metadata.tables.keys())
-
         return [engine,metadata,session]
     
     except Exception as e:
         print(f"Error connecting to the database: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+        print(f"Database connection error:",{str(e)})
         
+
+def getSupabaseBucket():
+    try:
+        url: str = os.getenv("SUPABASE_URL")
+        key: str = os.getenv("SUPABASE_KEY")
+        supabase: Client = create_client(url, key)
+        return supabase 
+    except:
+        print("Error Connecting to Supabase Bucket")
 
 def getOdooConnection():
     try:
@@ -70,5 +81,5 @@ def getOdooConnection():
     
     except Exception as e:
         print(f"Error connecting to Odoo: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Odoo connection error: {str(e)}")
+        print(f"Odoo connection error: {str(e)}")
 
