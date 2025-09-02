@@ -26,7 +26,7 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # Copy app code
-COPY app/ ./app
+COPY app/ .
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
