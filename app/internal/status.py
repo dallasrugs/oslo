@@ -3,7 +3,6 @@ from internal.connector import getSupabaseConnection, getOdooConnection
 from fastapi import HTTPException
 from internal.logger import logger
 from fastapi.responses import JSONResponse
-from internal.connector import getSupabaseBucket
 
 # Database shared objects
 db_engine = None
@@ -13,6 +12,7 @@ db_session = None
 # instance loaders 
 supabase_instance = None
 odoo_instance = None 
+listener_instance = False 
 
 def checkSupabaseConnection():
     # declaring global variables to store the database connection details
@@ -42,11 +42,14 @@ def checkOdooConnection():
             "message": "Issue with connecting to Odoo",
             "Exception Message" : e
         }})
+    
 
 def getLoaders():
     global supabase_instance
     global odoo_instance
     global supabase_bucket_instance
+
+
 
     # Loading Supabase Instance 
     try:
@@ -74,19 +77,18 @@ def getLoaders():
             status_code=500,
             detail="Failed to load Odoo instance."
         )
-    
-    
-    
+            
 def startup():
     """
     This function is called at the startup of the application.
     It checks the database connection and loads necessary instances.
     """
+    global listener_instance 
     try:
         checkSupabaseConnection() # for connecting to Supabase
         checkOdooConnection() # for connecting to Odoo Service 
         getLoaders() # loads instance objects 
-        logger.info("Application startup complete.")
+
     
     except Exception as e:
         print("Exception occured",e)

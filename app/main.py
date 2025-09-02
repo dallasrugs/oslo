@@ -12,15 +12,14 @@ origins = [
 
 
 
+supabase_listener_task = None  # Global task reference (optional, for shutdown)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Call DB check via status (and in future: other services too)
     logger.info("Starting up Oslo v0.1")
     status.startup()
     yield
     logger.info("Shutting down Oslo...")
-
 
 
 app = FastAPI(lifespan=lifespan)
@@ -33,6 +32,22 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Range"]
 )
+
+@app.middleware("http")
+async def log_request_body(request: Request, call_next):
+    try:
+        body = await request.body()
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type or "text" in content_type:
+            print(f"Request body: {body.decode('utf-8')}")
+        else:
+            print(f"Request body skipped (content-type: {content_type})")
+    except Exception as e:
+        print(f"Error reading body: {e}")
+    
+    response = await call_next(request)
+    return response
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

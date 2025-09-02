@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import requests 
 import json 
 from internal.logger import logger
+from datetime import datetime
 
 class Odoo:
     def __init__(self):
@@ -50,7 +51,8 @@ class Odoo:
                 "contact_name": inquiry_data.get("contact_name"),
                 "phone": inquiry_data.get("phone"),
                 "description": inquiry_data.get("message"),
-                "city": inquiry_data.get("city")
+                "probability": 50,
+                "create_date": datetime.now().isoformat()
             }
 
             payload = {

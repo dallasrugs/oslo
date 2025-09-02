@@ -1,4 +1,4 @@
-# file: console-api/app/internal/db.py
+# file: console-api/app/internal/connector.py
 
 import sqlalchemy as db 
 from datetime import datetime 
@@ -8,10 +8,13 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import sessionmaker
 from internal.logger import logger 
 from supabase import create_client, Client
-
+from supabase import acreate_client, AsyncClient
+from typing import Optional
 import os 
 import requests 
 import json 
+import asyncio
+
 # Load environment variables from .env file
 env_path = '../app/.env'
 load_dotenv(env_path)
@@ -26,6 +29,7 @@ from console_api.app.internal.db import SourcingDB - to import the class
 def getSupabaseConnection():
     try:
         logger.info("Attempting Supabase Connection..")
+
         connection_string = os.getenv("DATABASE_URL")
 
         engine = db.create_engine(connection_string, echo=True)
@@ -42,8 +46,20 @@ def getSupabaseConnection():
     except Exception as e:
         print(f"Error connecting to the database: {str(e)}")
         print(f"Database connection error:",{str(e)})
-        
 
+def getSupabase():
+    return os.getenv("DATABASE_SCHEMA")
+
+async def connectRealtime():
+    try:
+        url: str = os.environ.get("SUPABASE_URL")
+        key: str = os.environ.get("SUPABASE_KEY")
+        supabase: AsyncClient = await acreate_client(url,key)
+        return supabase
+    except Exception as e:
+        logger.error("Failed to connect to realtime")
+        raise Exception(f"Failed to connect to realtime, \n {e}")
+    
 def getSupabaseBucket():
     try:
         url: str = os.getenv("SUPABASE_URL")

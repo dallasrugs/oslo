@@ -1,4 +1,4 @@
-
+# console-api/app/routers/routes.py
 from fastapi import APIRouter, Depends, File, Form, UploadFile, Query, Response 
 from fastapi.responses import JSONResponse
 from routers.supabase import Supabase
@@ -32,7 +32,8 @@ def get_odoo_instance() -> Odoo:
 async def home():
     return {"message": "Welcome to Oslo, not Norway. Please do not use this endpoint directly.", "server_status": {
         "Supabase Instance": "Operational" if get_Supabase_instance() is not None else "Server Error, Supabase Instance is not loaded. Check Console", 
-        "Odoo Instance": "Operational" if get_odoo_instance() is not None else "Server Error, Odoo Instance is not loaded. Check Console" 
+        "Odoo Instance": "Operational" if get_odoo_instance() is not None else "Server Error, Odoo Instance is not loaded. Check Console",\
+        "Inquiry Listener": "Operational" if status.listener_instance else "Listener is not working, check logs"
     }}
 
 # GET REQUESTS
@@ -97,6 +98,7 @@ async def get_items(
             "Access-Control-Expose-Headers": "Content-Range"  
         }
     )
+
 @router.get("/Product/{item_id}")
 async def get_items_by_id(item_id: int, supabase: Supabase = Depends(get_Supabase_instance)):
     item = supabase.getItembyID(item_id)
@@ -114,36 +116,17 @@ async def get_items_by_id(item_id: int, supabase: Supabase = Depends(get_Supabas
 async def add_category(category: spb.Category, supabase: Supabase = Depends(get_Supabase_instance)):
     return await supabase.addCategory(category.name,category.description)
 
-@router.post("/products/add")
+@router.post("/Product")
 async def add_item(
-    title: str = Form(...),
-    description: str = Form(...),
-    altText: str = Form(...),
-    categoryId: int = Form(...),
-    file: UploadFile = File(...),
+    item: spb.Items,
     supabase: Supabase = Depends(get_Supabase_instance)
 ):
-    # Save the uploaded file temporarily
-    contents = await file.read()
-    temp_file_path = f"uploads/{file.filename}"
-
-    # Create a temporary directory to load images
-    os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
-    with open(temp_file_path, "wb") as f:
-        f.write(contents)
-
     result = await supabase.addNewItem(
-        title,
-        description,
-        temp_file_path,
-        altText,
-        categoryId
-    )
-
-    # Optional: Delete file after upload
-    os.remove(temp_file_path)
-
-    return result
+        item.title,
+        item.description,
+        item.category_id)
+    
+    return result 
 
 
 @router.post("/upload-image")
@@ -161,14 +144,31 @@ async def upload_image(
             f.write(contents)
 
         # Upload to Supabase bucket
-        results = await supabase.UpdateItemImage(item_id,temp_file_path)
+        results = await supabase.UpdateItemImage(item_id, temp_file_path)
 
         # Remove temp file
         os.remove(temp_file_path)
 
-        return results
+        # Always return a JSON response with CORS headers
+        return Response(
+            content=json.dumps(results, default=str),
+            media_type="application/json",
+            headers={
+                "Access-Control-Expose-Headers": "Content-Range",
+                "Access-Control-Allow-Origin": "http://localhost:5173"
+            }
+        )
     except Exception as e:
         logger.error(f"Exception has occured: {e}")
+        return Response(
+            content=json.dumps({"error": str(e)}, default=str),
+            media_type="application/json",
+            headers={
+                "Access-Control-Expose-Headers": "Content-Range",
+                "Access-Control-Allow-Origin": "http://localhost:5173"
+            },
+            status_code=500
+        )
 
 
 
@@ -176,6 +176,10 @@ async def upload_image(
 @router.put("/categories/update/{category_id}")
 async def update_category(category_id: int, category: spb.Category, supabase: Supabase = Depends(get_Supabase_instance)):
     return supabase.updateCategory(category_id,category.name,category.description)
+
+@router.put("/Product/{item_id}")
+async def update_item(item_id: int, item: spb.ItemUpdate,supabase: Supabase = Depends(get_Supabase_instance)):
+    return supabase.UpdateItem(item_id, item.title, item.description,item.category_id)
 
 # DELETE requests
 @router.delete("/categories/delete/{category_id}")

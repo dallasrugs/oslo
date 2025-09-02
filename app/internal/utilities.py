@@ -1,11 +1,11 @@
-from internal.connector import getSupabaseBucket
+from internal.connector import getSupabase
 from internal.templates import Messages
 from internal.logger import logger 
 
 ## [TODO] Add Method for compression of image
 async def ImageUploader(local_path, remote_path):
     try:
-        supabase = getSupabaseBucket()
+        supabase = getSupabase()
         # find a method to check if image already exists, if it does 
         # replace/delete the image and add new image
         # step 1: find if the image already exists 

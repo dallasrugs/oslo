@@ -14,6 +14,7 @@ from datetime import datetime
 from internal.logger import logger 
 from internal.utilities import ImageUploader
 from internal.templates import Messages
+from internal.connector import getSupabase
 import json 
 
 class Supabase:
@@ -27,10 +28,11 @@ class Supabase:
             self.session = connection.db_session
 
             # Define tables, find a way to import Schema correctly and then ask
-            self.Category = self.metadata.tables['oslo.Category']
-            self.Items = self.metadata.tables['oslo.Item']
-            self.ItemCategory = self.metadata.tables['oslo.ItemCategory']
-            self.ItemImage = self.metadata.tables['oslo.ItemImage']
+            self.schema = getSupabase()
+            self.Category = self.metadata.tables[f'{self.schema}.Category']
+            self.Items = self.metadata.tables[f'{self.schema}.Item']
+            self.ItemCategory = self.metadata.tables[f'{self.schema}.ItemCategory']
+            self.ItemImage = self.metadata.tables[f'{self.schema}.ItemImage']
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
@@ -210,22 +212,9 @@ class Supabase:
     
     def getItembyID(self, id):
         try:
-            stmt = db.select(
-                self.Items.c.id,
-                self.Items.c.title,
-                self.Items.c.description,
-                self.Category.c.id.label("category_id"),
-                self.Category.c.name,
-                self.ItemImage.c.url
-                             ).where(
-                (self.Items.c.id == self.ItemCategory.c.itemId) &
-                (self.Category.c.id == self.ItemCategory.c.categoryId) & 
-                (self.ItemImage.c.itemId == self.Items.c.id) & 
-                (self.Items.c.id == id))
-            results = self.session.execute(stmt).mappings().all()
-            return results 
-
-        except Exception as e:
+            results = self.getItems(id)
+            return results
+        except Exception as e: 
             raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
     
     async def getCategoryByID(self, category_id):
@@ -310,13 +299,13 @@ class Supabase:
             logger.error(f"Error Origin: supabase.py/updateCategory \n {str(e)}")
             raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")       
     
-    async def addNewItem(self,title,desc,path,altText,categoryID):
+    async def addNewItem(self,title,desc,categoryID):
         '''
             Add new Item to Supabase Database
         '''
         try:
             # Part 1: Add Record to Item First
-            id_ = await self.getLastID(self.Items)  # getLastID must also be async
+            id_ = await self.getLastID(self.Items)+1 # getLastID must also be async
             created_at_ = datetime.now()
             query1 = db.insert(self.Items).values(
                 id=id_,
@@ -334,32 +323,15 @@ class Supabase:
                 created_at = created_at_
             )
             self.session.execute(query1)
+            self.session.commit()
 
-            # Part 3: Upload Image to bucket
-            image_filename = f"{id_}.jpg"
-            response = await ImageUploader(path, image_filename)
-            if response.status_code == 200:
-
-                # Part 4: Add URL to ItemImage 
-                imageid_ = await self.getLastID(self.ItemImage)  # getLastID must also be async
-                created_at_ = datetime.now()
-                query = db.insert(self.ItemImage).values(
-                    id=imageid_,
-                    created_at = created_at_,
-                    itemId = id_,
-                    url = f"https://mcaniisezxryajilvjdb.supabase.co/storage/v1/object/public/item-images/{image_filename}",
-                    altText = altText
-                )
-                self.session.execute(query)
-                self.session.commit()
-                return Messages.success(message=f"{title} Item added successfully")
-            else:
-                return Messages.exception_message(
-
-                    message=f"{title} was not added, please check exception messages",
-                    origin="routers/supabase.py/addNewItem",
-                    status_code=500
-                )
+            try:
+                updated_item_db_object = self.getItemNoImage(id_)[0]
+                return updated_item_db_object
+            
+            except Exception as e: 
+                logger.error(f"Error Origin: supabase.py/addNewItem \n {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
         
         except Exception as e:
             logger.error(f"Error Origin: supabase.py/addNewItem \n {str(e)}")
@@ -399,8 +371,55 @@ class Supabase:
                 message="Item was not deleted successfully, please check exception message",
                 exception=e
             )
-    async def UpdateItem(self, item_id,title,desc,path,categoryID):
-        pass 
+    async def UpdateItem(self, item_id,title = None ,desc = None ,categoryID = None):
+        '''
+            Update Items from Console
+        '''
+        try:
+            if self.checkIdExists(self.Items, item_id):
+                # part 0: get previous values, compare (if change needed update that)
+                items = self.getItems(item_id)[0]
+
+                # if empty then update, old values
+                if  desc == None:
+                    desc = items.description
+
+                if  title == None:
+                    title = items.title 
+                
+                if categoryID == None:
+                    categoryID = items.category_id
+                 
+                # part 1: update item table
+                query = db.update(self.Items).values(
+                    title = title,
+                    description = desc, 
+                    created_at = datetime.now()
+                ).where(self.Items.c.id == item_id)
+                self.session.execute(query)
+
+                # part 2: update item category table 
+                query_2 = db.update(self.ItemCategory).values(categoryId = categoryID).where(self.ItemCategory.c.itemId == item_id)
+                self.session.execute(query_2)
+                # commit/flush entries
+                self.session.commit()
+                updated_item_db_object = await self.getItemsOnly(item_id)[0]
+                # If it's a SQLAlchemy Row, convert it to dict
+                if hasattr(updated_item_db_object, '_asdict'):
+                    updated_item_db_object = updated_item_db_object._asdict()
+                elif not isinstance(updated_item_db_object, dict):
+                    updated_item_db_object = dict(updated_item_db_object)
+
+            return updated_item_db_object
+            
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Error Origin: supabase.py/UpdateItem \n {str(e)}")
+            return Messages.exception_message(
+                origin="supabase.py/UpdateItem",
+                message="Item was not updated successfully, please check exception message",
+                exception=e
+            )
 
     async def UpdateItemImage(self, item_id, temp_file_path):
         try:
@@ -442,6 +461,69 @@ class Supabase:
         except Exception as e:
             logger.error("Error Origin: supabase.py/getLastID %s", e)
             raise HTTPException(status_code=500, detail=f"Error getting last ID: {str(e)}")
+    
+    async def checkIdExists(self, table, id):
+        try:
+            query = db.select(table).where(table.c.id == id)
+            result = self.session.execute(query)
+            return True if list(result).len() else False
+        except Exception as e:
+            logger.error("Error Origin: supabase.py/checkIdExists %s", e)
+            raise HTTPException(status_code=500, detail=f"Error supabase.py/checkIdExists : {str(e)}")            
+
+
+    # this is for returning item details 
+    def getItems(self,item_id):
+        try:
+            stmt = db.select(
+                self.Items.c.id,
+                self.Items.c.title,
+                self.Items.c.description,
+                self.Category.c.id.label("category_id"),
+                self.Category.c.name,
+                self.ItemImage.c.url
+                             ).where(
+                (self.Items.c.id == self.ItemCategory.c.itemId) &
+                (self.Category.c.id == self.ItemCategory.c.categoryId) & 
+                (self.ItemImage.c.itemId == self.Items.c.id) & 
+                (self.Items.c.id == item_id))
+            results = self.session.execute(stmt).mappings().all()
+            return results 
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
+    
+    async def getItemsOnly(self,item_id):
+        try:
+            stmt = db.select(
+                self.Items.c.id,
+                self.Items.c.title,
+                self.Items.c.description,
+                self.ItemCategory.c.categoryId.label("category_id"),
+                self.ItemImage.c.url).where(
+                    (self.Items.c.id == item_id) & 
+                    (self.ItemImage.c.itemId == self.Items.c.id) & 
+                    (self.ItemCategory.c.itemId == item_id))
+            results = self.session.execute(stmt).mappings().all()
+            return results 
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
+    
+    def getItemNoImage(self,item_id):
+        try:
+            stmt = db.select(
+                self.Items.c.id,
+                self.Items.c.title,
+                self.Items.c.description,
+                self.ItemCategory.c.categoryId.label("category_id")).where(
+                    (self.Items.c.id == item_id) & 
+                    (self.ItemCategory.c.itemId == item_id))
+            results = self.session.execute(stmt).mappings().all()
+            return results 
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
     
     def count_items(self, filter_str="{}"):
         filter_dict = json.loads(filter_str)
