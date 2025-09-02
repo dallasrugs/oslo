@@ -69,10 +69,49 @@ async def get_categories(
         }
     )
 
+@router.get("/categories/{category_id}/subcategories")
+async def get_subcategories(
+    category_id: int,
+    filter: str = Query("{}", alias="filter"),
+    range: str = Query("[0,24]", alias="range"),
+    sort: str = Query('["id","DESC"]', alias="sort"),
+    supabase: Supabase = Depends(get_Supabase_instance)
+):
+    try:
+        subcategories = await supabase.subcategories(category_id, filter, range, sort)
+        total = supabase.count_subcategories(category_id, filter)
 
+    except Exception as e:
+        return Messages.exception_message(
+            origin="routers/routes.py",
+            message="Issue in retrieving subcategories, please check exception",
+            exception=e
+        )
+
+    range_list = json.loads(range)
+    start, end = range_list
+    content_range = f"subcategories {start}-{start + len(subcategories) - 1}/{total}"
+
+    # Convert RowMapping to dict
+    subcategories_dict = [dict(row) for row in subcategories]
+
+    return Messages.message(
+        content=subcategories_dict,
+        headers={
+            "Content-Range": content_range,
+        }
+    )
+
+
+# get "Category" BY ID
 @router.get("/categories/{category_id}")
 async def get_category_by_id(category_id: int, Supabase: Supabase = Depends(get_Supabase_instance)):
     return Supabase.getCategoryByID(category_id)
+
+@router.get("/categories/{category_id}/subcategories/{subcategory_id}")
+async def get_category_by_id(category_id: int, subcategory_id: int, Supabase: Supabase = Depends(get_Supabase_instance)):
+    result = await Supabase.getSubcategoryByID(category_id, subcategory_id)
+    return result 
 
 @router.get("/Product")
 async def get_items(
@@ -112,9 +151,15 @@ async def get_items_by_id(item_id: int, supabase: Supabase = Depends(get_Supabas
 
 
 # POST requests
+# Category 
 @router.post("/categories/add")
 async def add_category(category: spb.Category, supabase: Supabase = Depends(get_Supabase_instance)):
     return await supabase.addCategory(category.name,category.description)
+
+# Subcategory
+@router.post("/categories/{category_id}/subcategories")
+async def addSubcategory(category_id: int ,subcategory: spb.Subcategory, supabase: Supabase = Depends(get_Supabase_instance)):
+    return await supabase.addSubcategory(category_id,subcategory.name,subcategory.description)
 
 @router.post("/Product")
 async def add_item(
@@ -177,6 +222,10 @@ async def upload_image(
 async def update_category(category_id: int, category: spb.Category, supabase: Supabase = Depends(get_Supabase_instance)):
     return supabase.updateCategory(category_id,category.name,category.description)
 
+@router.put("/categories/{category_id}/subcategory/{subcategory_id}")
+async def update_subcategory(category_id: int,subcategory_id: int, subcategory: spb.Subcategory, supabase: Supabase = Depends(get_Supabase_instance)):
+    return supabase.updateSubcategory(category_id, subcategory_id, subcategory.name, subcategory.description)
+
 @router.put("/Product/{item_id}")
 async def update_item(item_id: int, item: spb.ItemUpdate,supabase: Supabase = Depends(get_Supabase_instance)):
     return supabase.UpdateItem(item_id, item.title, item.description,item.category_id)
@@ -185,6 +234,15 @@ async def update_item(item_id: int, item: spb.ItemUpdate,supabase: Supabase = De
 @router.delete("/categories/delete/{category_id}")
 async def delete_category(category_id: int, supabase: Supabase = Depends(get_Supabase_instance)):
     return supabase.deleteCategory(category_id)
+
+@router.delete("/categories/{category_id}/subcategory/{subcategory_id}")
+async def delete_subcategory(
+    category_id: int,
+    subcategory_id: int,
+    supabase: Supabase = Depends(get_Supabase_instance)
+):
+    return supabase.deleteSubcategory(category_id, subcategory_id)
+
 
 @router.delete("/Product/{item_id}")
 async def delete_item(item_id: int, supabase: Supabase = Depends(get_Supabase_instance)):

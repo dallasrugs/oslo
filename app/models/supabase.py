@@ -8,6 +8,10 @@ from typing import Optional
 class Category(BaseModel):
     name: str 
     description: str  
+    
+class Subcategory(BaseModel):
+    name: str 
+    description: str 
 
 class Items(BaseModel):
     title: str 
