@@ -30,6 +30,7 @@ class Supabase:
             # Define tables, find a way to import Schema correctly and then ask
             self.schema = getSupabase()
             self.Category = self.metadata.tables[f'{self.schema}.Category']
+            self.Subcategory = self.metadata.tables[f'{self.schema}.Subcategory']
             self.Items = self.metadata.tables[f'{self.schema}.Item']
             self.ItemCategory = self.metadata.tables[f'{self.schema}.ItemCategory']
             self.ItemImage = self.metadata.tables[f'{self.schema}.ItemImage']
@@ -80,6 +81,59 @@ class Supabase:
                 raise # Re-raise if you want it to propagate to the router's error handler
 
         
+    async def categories(self, filter_str="{}", range_str="[0,24]", sort_str='["id","DESC"]'):
+        try:
+            filter_dict = json.loads(filter_str)
+            range_list = json.loads(range_str)
+            sort_list = json.loads(sort_str)
+
+            stmt = db.select(
+                self.Category.c.id,
+                self.Category.c.name,
+                self.Category.c.description,
+                self.Category.c.created_at
+            )
+
+            # Safely apply filters
+            for key, value in filter_dict.items():
+                if hasattr(self.Category.c, key):
+                    column = getattr(self.Category.c, key)
+
+                    if isinstance(value, list):
+                        # Check type of list elements and apply correct filter
+                        if all(isinstance(v, str) for v in value):
+                            stmt = stmt.where(column.in_(value))
+                        elif all(isinstance(v, int) for v in value):
+                            stmt = stmt.where(column.in_(value))
+                        else:
+                            raise ValueError(f"Incompatible filter list type for field '{key}'")
+                    elif isinstance(value, str):
+                        stmt = stmt.where(column.ilike(f"%{value}%"))
+                    else:
+                        stmt = stmt.where(column == value)
+
+            # Sorting
+            sort_field, sort_order = sort_list
+            if hasattr(self.Category.c, sort_field):
+                sort_col = getattr(self.Category.c, sort_field)
+                if sort_order.upper() == "ASC":
+                    stmt = stmt.order_by(sort_col.asc())
+                else:
+                    stmt = stmt.order_by(sort_col.desc())
+
+            # Pagination
+            start, end = range_list
+            limit = end - start + 1
+            stmt = stmt.offset(start).limit(limit)
+
+            results = self.session.execute(stmt).mappings().all()
+            return results
+
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Error Origin: supabase.py/categories \n {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
+
     async def categories(self, filter_str="{}", range_str="[0,24]", sort_str='["id","DESC"]'):
         try:
             filter_dict = json.loads(filter_str)
@@ -227,6 +281,16 @@ class Supabase:
             raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
         
 
+    async def getSubcategoryByID(self, category_id: int, subcategory_id: int):
+        try:
+            stmt = db.select(self.Subcategory).where(
+                (self.Subcategory.c.id == subcategory_id) &
+                (self.Subcategory.c.category_id == category_id)
+            )
+            result = self.session.execute(stmt).mappings().first()
+            return dict(result) if result else None
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
 
     '''
     Features: Individual Add, Bulk Add
@@ -250,6 +314,46 @@ class Supabase:
         
         except Exception as e:
             logger.error(f"Error Origin: supabase.py/addCategory \n {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
+    async def addSubcategory(self, category_id: int, name: str, desc: str):
+        """
+        Add a new subcategory under an existing category.
+        """
+        try:
+            # 1. Check if the category exists
+            query = db.select(self.Category).where(self.Category.c.id == category_id)
+            result = self.session.execute(query).fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+
+            # 2. Get the last ID for subcategories
+            id_ = await self.getLastID(self.Subcategory)
+            created_at_ = datetime.now()
+
+            # 3. Build slug (optional, simple lower + replace)
+            slug = name.lower().replace(" ", "-")
+
+            # 4. Insert into Subcategory table
+            query = self.Subcategory.insert().values(
+                id=id_,
+                created_at=created_at_,
+                name=name,
+                description=desc,
+                slug=slug,
+                category_id=category_id
+            )
+
+            self.session.execute(query)
+            self.session.commit()
+
+            return {"message": f"Subcategory '{name}' added under Category {category_id}"}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error Origin: supabase.py/addSubcategory \n {str(e)}")
             raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
     
     def updateCategory(self,category_id,name,desc):
@@ -279,6 +383,56 @@ class Supabase:
             logger.error(f"Error Origin: supabase.py/updateCategory \n {str(e)}")
             raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
+    def updateSubcategory(self, category_id: int, subcategory_id: int, name: str, desc: str):
+        """
+        Update subcategory by ID under a given category.
+        """
+        try:
+            # 1. Check if category exists
+            category = self.getCategoryByID(category_id)
+            if category is None:
+                raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+
+            # 2. Check if subcategory exists under this category
+            query = db.select(self.Subcategory).where(
+                (self.Subcategory.c.id == subcategory_id) &
+                (self.Subcategory.c.category_id == category_id)
+            )
+            result = self.session.execute(query).fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail=f"Subcategory {subcategory_id} not found in Category {category_id}")
+
+            # 3. Update subcategory
+            created_at_ = datetime.now()
+            slug = name.lower().replace(" ", "-")
+
+            update_query = (
+                db.update(self.Subcategory)
+                .values(
+                    created_at=created_at_,
+                    name=name,
+                    description=desc,
+                    slug=slug
+                )
+                .where(
+                    (self.Subcategory.c.id == subcategory_id) &
+                    (self.Subcategory.c.category_id == category_id)
+                )
+            )
+
+            self.session.execute(update_query)
+            self.session.commit()
+
+            return {"message": f"Subcategory {subcategory_id} updated in Category {category_id}"}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error Origin: supabase.py/updateSubcategory \n {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+    
+
     def deleteCategory(self,category_id):
         '''
             Deletes a category based on category id 
@@ -297,7 +451,48 @@ class Supabase:
             
         except Exception as e:
             logger.error(f"Error Origin: supabase.py/updateCategory \n {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")       
+            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+    def deleteSubcategory(self, category_id: int, subcategory_id: int):
+        """
+        Deletes a subcategory by ID under a given category.
+        """
+        try:
+            # 1. Check if category exists
+            category = self.getCategoryByID(category_id)
+            if category is None:
+                raise HTTPException(status_code=404, detail=f"Category {category_id} not found")
+
+            # 2. Check if subcategory exists under this category
+            query = db.select(self.Subcategory).where(
+                (self.Subcategory.c.id == subcategory_id) &
+                (self.Subcategory.c.category_id == category_id)
+            )
+            result = self.session.execute(query).fetchone()
+
+            if not result:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Subcategory {subcategory_id} not found in Category {category_id}"
+                )
+
+            # 3. Delete subcategory
+            delete_query = db.delete(self.Subcategory).where(
+                (self.Subcategory.c.id == subcategory_id) &
+                (self.Subcategory.c.category_id == category_id)
+            )
+
+            self.session.execute(delete_query)
+            self.session.commit()
+
+            return {"message": f"Subcategory {subcategory_id} deleted from Category {category_id}"}
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error Origin: supabase.py/deleteSubcategory \n {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
     
     async def addNewItem(self,title,desc,categoryID):
         '''

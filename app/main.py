@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 
 origins = [
-    "http://localhost:5173"]
+    "*"]
 
 
 

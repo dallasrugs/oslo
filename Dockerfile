@@ -7,7 +7,7 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install dependencies for building some Python packages
+# Install dependencies for building Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         gcc \
@@ -26,13 +26,12 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # Copy app code
-COPY app/ ./app
+COPY app/ .
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
 
-# Set working directory to app folder
+# Command to run FastAPI using dev
 WORKDIR /app
+CMD ["fastapi", "dev", "main.py", "--host", "0.0.0.0", "--port", "8000"]
 
-# Command to run FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
