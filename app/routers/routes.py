@@ -138,6 +138,10 @@ async def get_items(
         }
     )
 
+@router.get("/products/all")
+async def get_products(Supabase: Supabase = Depends(get_Supabase_instance)):
+    return Supabase.allItems()
+
 @router.get("/Product/{item_id}")
 async def get_items_by_id(item_id: int, supabase: Supabase = Depends(get_Supabase_instance)):
     item = supabase.getItembyID(item_id)

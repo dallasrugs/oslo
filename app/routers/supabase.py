@@ -262,6 +262,41 @@ class Supabase:
             self.session.rollback()  # Rollback the transaction on error
             logger.error(f"Error Origin: supabase.py/items \n {str(e)}")
             raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
+    
+    async def allItems(self):
+        try:
+            # Base query with joins and aggregation
+            stmt = db.select(
+                self.Items.c.id,
+                self.Items.c.title,
+                self.Items.c.description,
+                func.min(self.Category.c.name).label("category"),  # pick one category per item
+                func.min(self.ItemImage.c.url).label("url"),      # pick one image per item
+                self.Items.c.item_importance_score,               # additional field
+                self.Items.c.item_identifier                       # additional field
+            ).join(
+                self.ItemCategory, self.Items.c.id == self.ItemCategory.c.itemId
+            ).join(
+                self.Category, self.Category.c.id == self.ItemCategory.c.categoryId
+            ).join(
+                self.ItemImage, self.Items.c.id == self.ItemImage.c.itemId
+            ).group_by(
+                self.Items.c.id,
+                self.Items.c.title,
+                self.Items.c.description,
+                self.Items.c.item_importance_score,
+                self.Items.c.item_identifier,
+                self.Category.c.name
+            )
+
+            results = self.session.execute(stmt).mappings().all()
+            return results
+
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Error Origin: supabase.py/items \n {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Retrieval error: {str(e)}")
+
 
     
     def getItembyID(self, id):
