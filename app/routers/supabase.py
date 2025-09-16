@@ -26,6 +26,7 @@ class Supabase:
             self.engine = connection.db_engine
             self.metadata = connection.db_metadata
             self.session = connection.db_session
+            self.image_url = connection.spb_img_url
 
             # Define tables, find a way to import Schema correctly and then ask
             self.schema = getSupabase()
@@ -529,7 +530,7 @@ class Supabase:
             raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
     
-    async def addNewItem(self,title,desc,categoryID):
+    async def addNewItem(self,title,desc,categoryID,subcategoryID, internal_id):
         '''
             Add new Item to Supabase Database
         '''
@@ -537,22 +538,24 @@ class Supabase:
             # Part 1: Add Record to Item First
             id_ = await self.getLastID(self.Items)+1 # getLastID must also be async
             created_at_ = datetime.now()
-            query1 = db.insert(self.Items).values(
+            query = db.insert(self.Items).values(
                 id=id_,
                 created_at = created_at_,
                 title = title,
-                description = desc
+                description = desc,
+                item_identifier = internal_id
             )
-            self.session.execute(query1)
+            self.session.execute(query)
 
             # Part 2: Add Item to Category Mapper
-            created_at_ = datetime.now()
-            query1 = db.insert(self.ItemCategory).values(
+            query = db.insert(self.ItemCategory).values(
                 itemId=id_,
                 categoryId=categoryID,
+                subcategory_id = subcategoryID,
                 created_at = created_at_
             )
-            self.session.execute(query1)
+
+            self.session.execute(query)
             self.session.commit()
 
             try:
@@ -664,12 +667,13 @@ class Supabase:
                     id=imageid_,
                     created_at = created_at_,
                     itemId = item_id,
-                    url = f"https://mcaniisezxryajilvjdb.supabase.co/storage/v1/object/public/item-images/{image_filename}",
+                    url = f"{self.connection.image_url}{image_filename}",
                     altText = "Updated via Oslo FE"
                 )
                 self.session.execute(query)
                 self.session.commit()
                 return Messages.success(message=f"Image updated successfully")
+
         except Exception as e:
             logger.error(f"Exception has occured. Check Exception: \n {e}")
 

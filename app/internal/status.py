@@ -1,4 +1,7 @@
 # file: console-api/app/internal/status.py
+'''
+This file is for exporting connection objects as well as for checkinh
+''' 
 from internal.connector import getSupabaseConnection, getOdooConnection
 from fastapi import HTTPException
 from internal.logger import logger
@@ -8,6 +11,7 @@ from fastapi.responses import JSONResponse
 db_engine = None
 db_metadata = None
 db_session = None
+spb_img_url = None
 
 # instance loaders 
 supabase_instance = None
@@ -17,13 +21,14 @@ listener_instance = False
 def checkSupabaseConnection():
     # declaring global variables to store the database connection details
     global engine, metadata, session
-    global db_engine, db_metadata, db_session
+    global db_engine, db_metadata, db_session, spb_img_url
     try:
         logger.info("Connecting to Supabase Database...")
-        engine,metadata,session = getSupabaseConnection()
+        engine, metadata, session, image_url = getSupabaseConnection()
         db_engine = engine 
         db_metadata = metadata 
         db_session = session
+        spb_img_url = image_url
 
     except Exception as e:
         logger.error(f"Error connecting to Supabase Database: {str(e)}")
@@ -48,8 +53,6 @@ def getLoaders():
     global supabase_instance
     global odoo_instance
     global supabase_bucket_instance
-
-
 
     # Loading Supabase Instance 
     try:
@@ -86,7 +89,7 @@ def startup():
     global listener_instance 
     try:
         checkSupabaseConnection() # for connecting to Supabase
-        checkOdooConnection() # for connecting to Odoo Service 
+        #checkOdooConnection() # for connecting to Odoo Service 
         getLoaders() # loads instance objects 
 
     

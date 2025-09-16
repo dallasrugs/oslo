@@ -173,7 +173,9 @@ async def add_item(
     result = await supabase.addNewItem(
         item.title,
         item.description,
-        item.category_id)
+        item.category_id,
+        item.subcategory_id,
+        item.item_identifier)
     
     return result 
 
@@ -228,7 +230,7 @@ async def update_category(category_id: int, category: spb.Category, supabase: Su
 
 @router.put("/categories/{category_id}/subcategory/{subcategory_id}")
 async def update_subcategory(category_id: int,subcategory_id: int, subcategory: spb.Subcategory, supabase: Supabase = Depends(get_Supabase_instance)):
-    return supabase.updateSubcategory(category_id, subcategory_id, subcategory.name, subcategory.description)
+    return await supabase.updateSubcategory(category_id, subcategory_id, subcategory.name, subcategory.description)
 
 @router.put("/Product/{item_id}")
 async def update_item(item_id: int, item: spb.ItemUpdate,supabase: Supabase = Depends(get_Supabase_instance)):
