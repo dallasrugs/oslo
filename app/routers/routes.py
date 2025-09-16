@@ -3,16 +3,22 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, Query, Response
 from fastapi.responses import JSONResponse
 from routers.supabase import Supabase
 from routers.odoo import Odoo 
+from routers.redis import RedisHelper 
 from internal import status
 from models.inquiry import Inquiry
+from models.redis import RedisKey, RedisKeyUpdate, RedisKeyDelete, RedisNamespace, RedisGetKey
 import models.supabase as spb
+from typing import List, Optional
 from internal.logger import logger
 from internal.templates import Messages
 from internal.utilities import ImageUploader 
 import os 
-import json 
+import json
+ 
 
 router = APIRouter()
+
+redis_helper = RedisHelper()
 
 ## Supabase ROUTES
 def get_Supabase_instance() -> Supabase:
@@ -31,9 +37,7 @@ def get_odoo_instance() -> Odoo:
 @router.get("/")
 async def home():
     return {"message": "Welcome to Oslo, not Norway. Please do not use this endpoint directly.", "server_status": {
-        "Supabase Instance": "Operational" if get_Supabase_instance() is not None else "Server Error, Supabase Instance is not loaded. Check Console", 
-        "Odoo Instance": "Operational" if get_odoo_instance() is not None else "Server Error, Odoo Instance is not loaded. Check Console",\
-        "Inquiry Listener": "Operational" if status.listener_instance else "Listener is not working, check logs"
+        "Supabase Instance": "Operational" if get_Supabase_instance() is not None else "Server Error, Supabase Instance is not loaded. Check Console"
     }}
 
 # GET REQUESTS
@@ -281,5 +285,52 @@ async def create_inquiry(inquiry: Inquiry, odoo: Odoo = Depends(get_odoo_instanc
                 "exception": str(e)
             }
         )
+
+# redis routes 
+redis_route_prefix = '/redis'
+redis_namespace = 'odoo'
+
+@router.post(redis_route_prefix + "/set")
+async def set_key(data: RedisKey):
+    result = redis_helper.set_key(redis_namespace, data.key, data.value)
+    if not result:
+        raise HTTPException(status_code=500, detail="Failed to set key")
+    return {"message": f"Key '{data.key}' set successfully in namespace '{redis_namespace}'"}
+
+@router.post(redis_route_prefix + "/get")
+async def get_key(data: RedisGetKey):
+    result = redis_helper.get_key(redis_namespace, data.key)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Key not found")
+    return result
+
+@router.post(redis_route_prefix + "/update")
+async def update_key(data: RedisKeyUpdate):
+    result = redis_helper.update_key(redis_namespace, data.key, data.value)
+    if not result:
+        return {"message": "No changes made or update failed"}
+    return {"message": f"Key '{data.key}' updated successfully"}
+
+@router.post(redis_route_prefix + "/delete")
+async def delete_key(data: RedisKeyDelete):
+    deleted = redis_helper.delete_key(redis_namespace, data.key)
+    if deleted == 0:
+        raise HTTPException(status_code=404, detail="Key not found")
+    return {"message": f"Key '{data.key}' deleted successfully"}
+
+@router.post(redis_route_prefix + "/list", response_model=List[str])
+async def list_keys():
+    keys = redis_helper.list_keys(redis_namespace)
+    return keys
+
+@router.post(redis_route_prefix + "/all")
+async def get_all():
+    items = redis_helper.get_all(redis_namespace)
+    return items
+
+@router.post(redis_route_prefix + "/flush")
+async def flush_namespace():
+    count = redis_helper.flush_namespace(redis_namespace)
+    return {"message": f"Flushed {count} keys from namespace '{redis_namespace}'"}
 
 
