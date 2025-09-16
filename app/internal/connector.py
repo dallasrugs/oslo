@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from internal.logger import logger 
 from supabase import create_client, Client
 from supabase import acreate_client, AsyncClient
+import redis 
 from typing import Optional
 import os 
 import requests 
@@ -101,4 +102,18 @@ def getOdooConnection():
     except Exception as e:
         print(f"Error connecting to Odoo: {str(e)}")
         print(f"Odoo connection error: {str(e)}")
+    
+def getRedisConnection():
+    try:
+        redis_ = redis.Redis(
+        host = os.getenv("REDIS_URL","localhost"),
+        port = int(os.getenv("REDIS_PORT",6379)),
+        decode_responses = True 
+        )
+
+        return redis_
+
+    except Exception as e:
+        logger.error(f"An exception has occurred {e}")
+        raise  
 

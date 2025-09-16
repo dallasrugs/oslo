@@ -1,8 +1,8 @@
 # file: console-api/app/internal/status.py
 '''
-This file is for exporting connection objects as well as for checkinh
+This file is for exporting connection objects as well as for checking
 ''' 
-from internal.connector import getSupabaseConnection, getOdooConnection
+from internal.connector import getSupabaseConnection, getOdooConnection, getRedisConnection
 from fastapi import HTTPException
 from internal.logger import logger
 from fastapi.responses import JSONResponse
@@ -13,10 +13,12 @@ db_metadata = None
 db_session = None
 spb_img_url = None
 
+
 # instance loaders 
 supabase_instance = None
 odoo_instance = None 
 listener_instance = False 
+redis_instance = False 
 
 def checkSupabaseConnection():
     # declaring global variables to store the database connection details
@@ -51,7 +53,7 @@ def checkOdooConnection():
 
 def getLoaders():
     global supabase_instance
-    global odoo_instance
+    global redis_instance
     global supabase_bucket_instance
 
     # Loading Supabase Instance 
@@ -67,19 +69,29 @@ def getLoaders():
             status_code=500,
             detail="Failed to load Supabase instance."
         )
-    
-    # Loading Odoo Instance 
+    # Loading Redis Instance 
     try:
-        if odoo_instance is None:
-            logger.info("Loading Odoo Instance..")
-            from routers.odoo import Odoo 
-            odoo_instance = Odoo()
+        if redis_instance is None:
+            logger.info("Loading Redis Instance...")
+            redis_ = getRedisConnection()
     except Exception as e:
-        logger.error(f"Error Loading Odoo Connection")
+        logger.error(f"Error loading Redis Instance: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to load Odoo instance."
+            detail="Failed to load Supabase instance."
         )
+    # # Loading Odoo Instance 
+    # try:
+    #     if odoo_instance is None:
+    #         logger.info("Loading Odoo Instance..")
+    #         from routers.odoo import Odoo 
+    #         odoo_instance = Odoo()
+    # except Exception as e:
+    #     logger.error(f"Error Loading Odoo Connection")
+    #     raise HTTPException(
+    #         status_code=500,
+    #         detail="Failed to load Odoo instance."
+    #     )
             
 def startup():
     """
