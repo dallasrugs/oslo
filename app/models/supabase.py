@@ -17,6 +17,8 @@ class Items(BaseModel):
     title: str 
     description: str 
     category_id: int 
+    subcategory_id: int 
+    item_identifier: str
 
 class ItemUpdate(BaseModel):
     title: str 

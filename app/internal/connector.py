@@ -41,7 +41,10 @@ def getSupabaseConnection():
         connection = engine.connect()
         metadata = db.MetaData(schema=os.getenv("DATABASE_SCHEMA"))
         metadata.reflect(bind=engine)
-        return [engine,metadata,session]
+
+        # obtain URL for images 
+        image_url = os.getenv("SUPABASE_IMG_URL")
+        return [engine,metadata,session, image_url]
     
     except Exception as e:
         print(f"Error connecting to the database: {str(e)}")
